@@ -1,0 +1,36 @@
+name: "Release Validation"
+
+on:
+  release:
+    types:
+      - "published"
+
+jobs:
+  validate-release:
+    name: "Validate Release"
+    runs-on: "ubuntu-latest"
+    steps:
+      - name: "Checkout the repository"
+        uses: "actions/checkout@v4"
+
+      - name: "Validate version matches release tag"
+        shell: "bash"
+        run: |
+          MANIFEST_VERSION=$(python3 -c "import json; print(json.load(open('${{ github.workspace }}/custom_components/mova_viax/manifest.json'))['version'])")
+          RELEASE_TAG="${{ github.event.release.tag_name }}"
+          
+          # Strip 'v' prefix from release tag if present
+          RELEASE_VERSION="${RELEASE_TAG#v}"
+          
+          echo "Manifest version: $MANIFEST_VERSION"
+          echo "Release tag: $RELEASE_TAG"
+          echo "Release version (stripped): $RELEASE_VERSION"
+          
+          if [ "$MANIFEST_VERSION" != "$RELEASE_VERSION" ]; then
+            echo "❌ ERROR: Version mismatch!"
+            echo "The version in manifest.json ($MANIFEST_VERSION) does not match the release version ($RELEASE_VERSION)"
+            echo "Please update the manifest.json version before creating the release."
+            exit 1
+          else
+            echo "✅ SUCCESS: Version matches release tag"
+          fi
