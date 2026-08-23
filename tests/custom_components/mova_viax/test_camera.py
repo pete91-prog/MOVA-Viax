@@ -99,6 +99,22 @@ class TestDreameMowerCameraEntity:
 
         assert camera_entity._image_bytes == png
         assert camera_entity.content_type == "image/png"
+
+    def test_live_image_uses_viax_png_without_vector_map(self, camera_entity, mock_coordinator):
+        """ViAX live overlays render on the JSON map when no vector map exists."""
+        mock_coordinator.device.vector_map = None
+        mock_coordinator.device.viax_map_json = {"map": []}
+        camera_entity._live_coordinates = [[1, 2], [3, 4]]
+        png = b"\x89PNG\r\n\x1a\n" + b"live"
+
+        with patch(
+            "custom_components.mova_viax.camera.render_map_png", return_value=png
+        ) as render:
+            result = camera_entity._generate_live_image()
+
+        assert result == png
+        render.assert_called_once()
+        assert render.call_args.kwargs["live_coordinates"] == [[1, 2], [3, 4]]
     
     def test_save_actual_svg_output(self, camera_entity, golden_map_data, golden_svg):
         """Generate and save the actual SVG output for comparison with golden file.

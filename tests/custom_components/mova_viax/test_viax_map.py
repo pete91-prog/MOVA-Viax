@@ -63,6 +63,19 @@ def test_render_map_png_returns_png_bytes():
     png = render_map_png(VIAX_MAP)
     assert png is not None
     assert png.startswith(b"\x89PNG\r\n\x1a\n")
+    assert len(png) > 8000
+
+
+def test_render_map_png_live_overlay_stays_png():
+    live = [[20, 20], [80, 90], [160, 40], [240, 180]]
+    png = render_map_png(VIAX_MAP, live_coordinates=live)
+    assert png is not None
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_render_map_png_rejects_empty_geometry():
+    assert render_map_png({"map": [], "obstacle": []}) is None
+    assert render_map_png(None) is None
 
 
 def test_refresh_device_map_caches_json(monkeypatch):

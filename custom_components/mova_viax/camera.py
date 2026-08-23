@@ -364,24 +364,42 @@ class DreameMowerCameraEntity(DreameMowerEntity, Camera):
                 None,
                 self._generate_live_image
             )
-            self._set_image(image, "image/svg+xml")
+            if image:
+                content_type = "image/png" if image.startswith(b"\x89PNG") else "image/svg+xml"
+                self._set_image(image, content_type)
             
         except Exception as ex:
             _LOGGER.error("Failed to update live image: %s", ex)
 
     def _generate_live_image(self) -> bytes:
-        """Generate live map image in SVG format with current coordinates overlay on vector map."""
-        assert self.coordinator.device.vector_map is not None
-        map_data = vector_map_to_map_data(self.coordinator.device.vector_map)
+        """Generate a live map with the current coordinates overlaid.
 
-        return generate_svg_map_image(
-            map_data, None, self.coordinator,
-            rotation=self._current_rotation,
-            live_coordinates=self._live_coordinates,
-            show_title=self._current_show_title,
-            show_legend=self._current_show_legend,
-            padding=self._current_padding,
-        )
+        Vector maps render as SVG. ViAX JSON records (no protobuf map) render
+        as PNG so the same garden style is used for both static and live views.
+        """
+        vector_map = self.coordinator.device.vector_map
+        if vector_map and getattr(vector_map, "boundary", None):
+            map_data = vector_map_to_map_data(vector_map)
+            return generate_svg_map_image(
+                map_data, None, self.coordinator,
+                rotation=self._current_rotation,
+                live_coordinates=self._live_coordinates,
+                show_title=self._current_show_title,
+                show_legend=self._current_show_legend,
+                padding=self._current_padding,
+            )
+
+        viax = getattr(self.coordinator.device, "viax_map_json", None)
+        if viax:
+            png = render_map_png(
+                viax,
+                live_coordinates=self._live_coordinates,
+                show_title=self._current_show_title,
+                show_legend=self._current_show_legend,
+            )
+            if png:
+                return png
+        return b""
 
     @property
     def is_on(self) -> bool:
@@ -478,7 +496,11 @@ class DreameMowerCameraEntity(DreameMowerEntity, Camera):
 
             def _refresh_and_render() -> bytes | None:
                 refresh_device_map(device)
-                return render_map_png(getattr(device, "viax_map_json", None))
+                return render_map_png(
+                    getattr(device, "viax_map_json", None),
+                    show_title=self._current_show_title,
+                    show_legend=self._current_show_legend,
+                )
 
             image = await loop.run_in_executor(None, _refresh_and_render)
             if image:
