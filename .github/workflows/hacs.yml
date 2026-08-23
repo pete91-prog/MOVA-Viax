@@ -15,7 +15,6 @@ jobs:
         uses: "hacs/action@main"
         with:
           category: "integration"
-          # These three checks read GitHub repository settings (About + license
-          # detection), which cannot be set from this PR. Remove the ignores
-          # after main has a LICENSE file and the repo description/topics are set.
-          ignore: "topics,description,license"
+          # Space-separated. These read GitHub About settings that this branch
+          # cannot update. Remove after the repo description and topics are set.
+          ignore: "topics description"

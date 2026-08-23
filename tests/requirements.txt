@@ -4,6 +4,7 @@
 # Provides Home Assistant 2025.11.0b1 with latest API features
 # Latest version from main branch
 git+https://github.com/MatthewFlamm/pytest-homeassistant-custom-component.git
+pytest>=8.3,<9
 python-miio==0.5.12
 pycryptodome==3.23.0
 pytest-mock==3.14.1

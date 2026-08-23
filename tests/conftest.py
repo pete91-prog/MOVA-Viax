@@ -7,6 +7,15 @@ pytest_plugins = "pytest_homeassistant_custom_component"
 
 
 @pytest.fixture(autouse=True)
+def enable_event_loop_debug():
+    """Replace the HA plugin's async autouse fixture with a sync no-op.
+
+    pytest 9 errors when a synchronous test pulls in an async autouse fixture.
+    """
+    return None
+
+
+@pytest.fixture(autouse=True)
 def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
     """Enable custom integrations defined in the test dir."""
     pass
