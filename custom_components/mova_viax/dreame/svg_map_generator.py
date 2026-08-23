@@ -139,7 +139,7 @@ def create_svg_document(width: int, height: int, background_color: str = "white"
 
 
 def svg_path_from_segments(segments: List[List[List[int]]], bounds: Tuple[int, int, int, int],
-                          img_width: int, img_height: int, stroke_color: str, stroke_width: int = 2,
+                          img_width: int, img_height: int, stroke_color: str, stroke_width: float = 2,
                           dashed: bool = False, padding: int = MAP_PADDING) -> str:
     """Create SVG path element from path segments."""
     if not segments:
@@ -200,7 +200,7 @@ def svg_circle(x: int, y: int, bounds: Tuple[int, int, int, int],
 
 
 def svg_dashed_path(points: List[List[int]], bounds: Tuple[int, int, int, int], 
-                   img_width: int, img_height: int, stroke_color: str, stroke_width: int = 2,
+                   img_width: int, img_height: int, stroke_color: str, stroke_width: float = 2,
                    padding: int = MAP_PADDING) -> str:
     """Create SVG dashed path for trajectories."""
     if len(points) < 2:
