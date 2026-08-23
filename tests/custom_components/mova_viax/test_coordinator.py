@@ -45,7 +45,7 @@ def minimal_config_entry():
     )
 
 
-async def test_coordinator_initialization(hass: HomeAssistant, minimal_config_entry):
+async def test_coordinator_initialization(hass: HomeAssistant, minimal_config_entry, enable_custom_integrations):
     """Test that DreameMowerCoordinator initializes correctly with minimal config."""
     coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
     
@@ -56,7 +56,7 @@ async def test_coordinator_initialization(hass: HomeAssistant, minimal_config_en
     assert coordinator.update_interval is None  # No polling by default
 
 
-async def test_coordinator_async_update_data(hass: HomeAssistant, minimal_config_entry):
+async def test_coordinator_async_update_data(hass: HomeAssistant, minimal_config_entry, enable_custom_integrations):
     """Test coordinator's _async_update_data method returns expected structure."""
     coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
     
@@ -85,7 +85,7 @@ async def test_coordinator_async_update_data(hass: HomeAssistant, minimal_config
     assert data["firmware"] == "Unknown"
 
 
-async def test_coordinator_initial_data_fetch(hass: HomeAssistant, minimal_config_entry):
+async def test_coordinator_initial_data_fetch(hass: HomeAssistant, minimal_config_entry, enable_custom_integrations):
     """Test coordinator can fetch initial data without errors."""
     coordinator = DreameMowerCoordinator(hass, entry=minimal_config_entry)
 
@@ -97,7 +97,7 @@ async def test_coordinator_initial_data_fetch(hass: HomeAssistant, minimal_confi
     assert coordinator.data["name"] == "Test Mower"
 
 
-async def test_coordinator_with_required_config_data(hass: HomeAssistant):
+async def test_coordinator_with_required_config_data(hass: HomeAssistant, enable_custom_integrations):
     """Test coordinator requires all essential config data."""
     config_entry = MockConfigEntry(
         domain=DOMAIN,

@@ -15,9 +15,9 @@ def enable_event_loop_debug():
     return None
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def auto_enable_custom_integrations(enable_custom_integrations: None) -> None:
-    """Enable custom integrations defined in the test dir."""
+    """Enable custom integrations for tests that request this fixture."""
     pass
 
 

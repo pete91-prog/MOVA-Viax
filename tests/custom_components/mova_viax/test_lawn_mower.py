@@ -603,7 +603,7 @@ async def _registered_services(hass):
 
 
 @pytest.mark.asyncio
-async def test_every_service_registers_with_an_entity_service_schema(hass):
+async def test_every_service_registers_with_an_entity_service_schema(hass, enable_custom_integrations):
     """Home Assistant refuses a schema it cannot recognise as an entity one."""
     registrations = await _registered_services(hass)
 
@@ -615,7 +615,7 @@ async def test_every_service_registers_with_an_entity_service_schema(hass):
 
 
 @pytest.mark.asyncio
-async def test_set_edge_mowing_settings_schema_validates_its_input(hass):
+async def test_set_edge_mowing_settings_schema_validates_its_input(hass, enable_custom_integrations):
     """The service takes booleans as written and insists on at least one setting."""
     schema = dict(await _registered_services(hass))["set_edge_mowing_settings"]
 

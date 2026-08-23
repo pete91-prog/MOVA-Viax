@@ -19,6 +19,8 @@ from custom_components.mova_viax.config_flow import (
 )
 from homeassistant.const import CONF_NAME, CONF_PASSWORD, CONF_USERNAME
 
+pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
+
 
 @pytest.fixture
 def test_config_entry():

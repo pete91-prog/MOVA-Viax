@@ -25,6 +25,8 @@ from custom_components.mova_viax.const import (
     RAIN_POLL_INTERVAL_SECONDS,
 )
 
+pytestmark = pytest.mark.usefixtures("enable_custom_integrations")
+
 
 def _make_entry() -> MockConfigEntry:
     return MockConfigEntry(
