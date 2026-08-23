@@ -1,0 +1,32 @@
+"""Constants for the MOVA Viax Home Assistant integration."""
+
+from __future__ import annotations
+from typing import Final
+
+DOMAIN = "mova_viax"
+
+# Configuration constants
+CONF_NOTIFY: Final = "notify"
+CONF_MAP_ROTATION: Final = "map_rotation"
+CONF_MAP_SHOW_TITLE: Final = "map_show_title"
+CONF_MAP_SHOW_LEGEND: Final = "map_show_legend"
+CONF_MAP_PADDING: Final = "map_padding"
+
+# Data storage keys
+DATA_COORDINATOR = "coordinator"
+DATA_PLATFORMS = "platforms"
+
+# How often to poll the cloud for firmware update availability.
+FIRMWARE_POLL_INTERVAL_HOURS = 24
+
+# How often to poll the cloud connectivity heartbeat to detect whether the
+# device itself is online. The cloud MQTT link the integration uses stays up
+# even when the robot loses its own connection, so this poll is what flips
+# entities to unavailable while the device is offline.
+ONLINE_POLL_INTERVAL_SECONDS = 60
+
+# How often to re-read the time rain protection lets the mower work again. The
+# device reports that time when it starts holding the mower back but says
+# nothing when it simply runs out, so the poll is what retires a time that has
+# passed. Settings are not polled: the device announces every change to those.
+RAIN_POLL_INTERVAL_SECONDS = 300
