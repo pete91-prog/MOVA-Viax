@@ -56,12 +56,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         else _MOWER_PLATFORMS
     )
     
-    # Connect to the device. A failure here (e.g. the cloud MQTT broker timing
-    # out) is transient, so raise ConfigEntryNotReady to let Home Assistant retry
-    # setup with exponential backoff instead of leaving the entry stuck.
+    # Connect to the cloud and, when configured, the mower on the LAN. Either
+    # path is enough for setup. A total failure is treated as transient so Home
+    # Assistant retries instead of leaving the entry stuck.
     if not await coordinator.async_connect_device():
         raise ConfigEntryNotReady(
-            f"Unable to connect to Dreame device {coordinator.name}"
+            f"Unable to connect to device {coordinator.name} over cloud or LAN"
         )
 
     if coordinator.device_type != DEVICE_TYPE_SWBOT:

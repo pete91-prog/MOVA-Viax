@@ -15,7 +15,13 @@ from homeassistant.util import dt as dt_util
 
 from homeassistant.const import CONF_NAME, CONF_PASSWORD, CONF_USERNAME
 
-from .const import DOMAIN, CONF_NOTIFY
+from .const import (
+    DOMAIN,
+    CONF_NOTIFY,
+    CONF_HOST,
+    CONF_TOKEN,
+    CONF_PREFER_LOCAL,
+)
 from .config_flow import (
     CONF_ACCOUNT_TYPE, 
     CONF_COUNTRY, 
@@ -85,13 +91,21 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if entry.data.get(CONF_DEVICE_TYPE) == DEVICE_TYPE_SWBOT
             else DreameMowerDevice
         )
+        host = entry.options.get(CONF_HOST) or entry.data.get(CONF_HOST)
+        token = entry.options.get(CONF_TOKEN) or entry.data.get(CONF_TOKEN)
+        prefer_local = bool(entry.options.get(CONF_PREFER_LOCAL, entry.data.get(CONF_PREFER_LOCAL, False)))
         self.device = device_cls(
             entry.data[CONF_DID],
             entry.data[CONF_USERNAME],
             entry.data[CONF_PASSWORD],
             entry.data[CONF_ACCOUNT_TYPE],
             entry.data[CONF_COUNTRY],
-            hass.config.config_dir)
+            hass.config.config_dir,
+            host=host,
+            token=token,
+            prefer_local=prefer_local,
+            mac=entry.data.get(CONF_MAC),
+        )
         self._selected_mowing_mode = MowingMode.ALL_AREA
         self._selected_contour_id: tuple[int, int] | None = None
         self._selected_zone_id: int | None = None
@@ -1031,8 +1045,26 @@ class DreameMowerCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Poll the cloud connectivity heartbeat to detect if the device is offline."""
         await self.device.async_update_online_status()
 
+    def _persist_lan_credentials(self) -> None:
+        """Store the LAN IP and token so the next offline start still works."""
+        host, token = self.device.lan_credentials
+        if not host:
+            return
+        data = dict(self.entry.data)
+        changed = False
+        if data.get(CONF_HOST) != host:
+            data[CONF_HOST] = host
+            changed = True
+        if token and data.get(CONF_TOKEN) != token:
+            data[CONF_TOKEN] = token
+            changed = True
+        if changed:
+            self.hass.config_entries.async_update_entry(self.entry, data=data)
+
     async def async_connect_device(self) -> bool:
-        return await self.device.connect()
+        connected = await self.device.connect()
+        self._persist_lan_credentials()
+        return connected
 
     async def async_disconnect_device(self) -> None:
         """Disconnect from the device."""

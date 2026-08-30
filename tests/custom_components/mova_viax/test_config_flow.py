@@ -12,7 +12,13 @@ from custom_components.mova_viax.config_flow import (
     NOTIFICATION_ERROR,
     model_map,
 )
-from custom_components.mova_viax.const import CONF_NOTIFY, CONF_MAP_ROTATION
+from custom_components.mova_viax.const import (
+    CONF_HOST,
+    CONF_MAP_ROTATION,
+    CONF_NOTIFY,
+    CONF_PREFER_LOCAL,
+    CONF_TOKEN,
+)
 
 
 class TestDeviceTypeForModel:
@@ -90,5 +96,8 @@ class TestOptionsFlow:
                 "map_show_title": True,
                 "map_show_legend": True,
                 "map_padding": 50,
+                CONF_HOST: "192.168.1.50",
+                CONF_TOKEN: "",
+                CONF_PREFER_LOCAL: False,
             })
             assert validated[CONF_MAP_ROTATION] == int(value)

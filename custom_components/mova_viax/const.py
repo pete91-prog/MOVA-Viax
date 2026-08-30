@@ -11,6 +11,9 @@ CONF_MAP_ROTATION: Final = "map_rotation"
 CONF_MAP_SHOW_TITLE: Final = "map_show_title"
 CONF_MAP_SHOW_LEGEND: Final = "map_show_legend"
 CONF_MAP_PADDING: Final = "map_padding"
+CONF_HOST: Final = "host"
+CONF_TOKEN: Final = "token"
+CONF_PREFER_LOCAL: Final = "prefer_local"
 
 # Data storage keys
 DATA_COORDINATOR = "coordinator"

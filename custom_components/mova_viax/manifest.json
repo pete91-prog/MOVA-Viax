@@ -14,7 +14,8 @@
   "requirements": [
     "pillow",
     "requests",
-    "paho-mqtt>=2.0.0"
+    "paho-mqtt>=2.0.0",
+    "python-miio>=0.5.12"
   ],
-  "version": "1.1.0"
+  "version": "1.2.0"
 }
