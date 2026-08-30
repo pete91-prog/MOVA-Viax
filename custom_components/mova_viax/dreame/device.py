@@ -19,6 +19,7 @@ from typing import Any, Callable
 from datetime import datetime
 
 from .cloud.cloud_device import DreameMowerCloudDevice
+from .local import LocalMowerProtocol, _normalize_token, find_host_for_mac
 from .map_data_parser import MowerVectorMap, parse_batch_map_data
 from .utils import download_file
 from .property import (
@@ -36,6 +37,7 @@ from .property import (
     POSE_COVERAGE_COORDINATES_PROPERTY_NAME,
 )
 from .const import (
+    ActionIdentifier,
     BATTERY_PROPERTY,
     STATUS_PROPERTY,
     BLUETOOTH_PROPERTY,
@@ -176,6 +178,72 @@ class MowingMode(str, Enum):
     MANUAL = "manual"
 
 
+class _RoutedCloudDevice:
+    """Cloud client that falls back to LAN when the internet is gone.
+
+    Control methods on the cloud client call ``self.send()``. Those methods
+    must live on this wrapper; otherwise ``__getattr__`` binds them to the
+    raw cloud object and start/pause/dock skip the LAN fallback.
+    """
+
+    def __init__(self, cloud: DreameMowerCloudDevice, owner: "DreameMowerDevice") -> None:
+        object.__setattr__(self, "_cloud", cloud)
+        object.__setattr__(self, "_owner", owner)
+
+    def send(self, method: str, parameters: Any, retry_count: int = 2) -> Any:
+        return self._owner._send_command(method, parameters, retry_count)
+
+    def get_properties(self, parameters: Any = None, retry_count: int = 1) -> Any:
+        return self.send("get_properties", parameters=parameters, retry_count=retry_count)
+
+    def set_properties(self, parameters: Any = None, retry_count: int = 2) -> Any:
+        return self.send("set_properties", parameters=parameters, retry_count=retry_count)
+
+    def set_property(self, siid: int, piid: int, value: Any = None, retry_count: int = 2) -> Any:
+        return self.set_properties(
+            [
+                {
+                    "did": str(self._cloud.device_id),
+                    "siid": siid,
+                    "piid": piid,
+                    "value": value,
+                }
+            ],
+            retry_count=retry_count,
+        )
+
+    def action(
+        self,
+        siid: int,
+        aiid: int,
+        parameters: list | None = None,
+        retry_count: int = 2,
+    ) -> Any:
+        if parameters is None:
+            parameters = []
+        return self.send(
+            "action",
+            parameters={
+                "did": str(self._cloud.device_id),
+                "siid": siid,
+                "aiid": aiid,
+                "in": parameters,
+            },
+            retry_count=retry_count,
+        )
+
+    def execute_action(self, action: ActionIdentifier) -> bool:
+        try:
+            self.action(action.siid, action.aiid)
+            return True
+        except Exception as ex:
+            _LOGGER.error("%s action failed: %s", action.name, ex)
+            return False
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._cloud, name)
+
+
 class DreameMowerDevice:
     """Device communication handler for Dreame Mower.
     
@@ -191,6 +259,10 @@ class DreameMowerDevice:
         account_type: str,
         country: str,
         hass_config_dir: str,
+        host: str | None = None,
+        token: str | None = None,
+        prefer_local: bool = False,
+        mac: str | None = None,
     ) -> None:
         """Initialize the device handler.
         
@@ -201,6 +273,10 @@ class DreameMowerDevice:
             account_type: Account type for cloud authentication
             country: Country for cloud authentication
             hass_config_dir: The path to the Home Assistant configuration directory.
+            host: Optional LAN IP of the mower for offline control.
+            token: Optional 32-character miIO token for LAN control.
+            prefer_local: Send commands over LAN first when a host is configured.
+            mac: Device MAC used to discover the LAN IP when host is empty.
         """
         self._device_id = device_id
         self._username = username
@@ -208,15 +284,22 @@ class DreameMowerDevice:
         self._account_type = account_type
         self._country = country
         self._hass_config_dir = hass_config_dir
+        self._host = (host or "").strip() or None
+        self._token = (token or "").strip() or None
+        self._prefer_local = prefer_local
+        self._mac = mac
         
         # Initialize cloud device
-        self._cloud_device = DreameMowerCloudDevice(
+        self._raw_cloud_device = DreameMowerCloudDevice(
             username=username,
             password=password,
             country=country,
             account_type=account_type,
             device_id=device_id,
         )
+        self._local = LocalMowerProtocol(self._host, self._token, device_id) if self._host else None
+        self._lan_discovery_attempted = False
+        self._cloud_device = _RoutedCloudDevice(self._raw_cloud_device, self)
         
         # Pullable properties
         self._firmware = "Unknown"
@@ -278,18 +361,33 @@ class DreameMowerDevice:
 
     @property
     def connected(self) -> bool:
-        """Return True if device is connected."""
-        return self._cloud_device.connected
+        """Return True if the cloud MQTT link or the LAN client is up."""
+        cloud = (
+            self._raw_cloud_device
+            if isinstance(self._cloud_device, _RoutedCloudDevice)
+            else self._cloud_device
+        )
+        return bool(getattr(cloud, "connected", False)) or self.local_connected
+
+    @property
+    def local_connected(self) -> bool:
+        """Return True when the mower answers on the LAN."""
+        return bool(self._local and self._local.connected)
 
     @property
     def device_reachable(self) -> bool:
-        """Return True if device is reachable via cloud API."""
-        return self._cloud_device.device_reachable
+        """Return True if the device is reachable via cloud or LAN."""
+        cloud = (
+            self._raw_cloud_device
+            if isinstance(self._cloud_device, _RoutedCloudDevice)
+            else self._cloud_device
+        )
+        return bool(getattr(cloud, "device_reachable", False)) or self.local_connected
 
     @property
     def online(self) -> bool:
-        """Return True if the device itself is online per the cloud heartbeat."""
-        return self._online
+        """Return True if the mower is reachable locally or reported online."""
+        return self._online or self.local_connected
 
     @property
     def firmware(self) -> str:
@@ -653,6 +751,85 @@ class DreameMowerDevice:
             )
         return True
 
+    def _ensure_local(self) -> LocalMowerProtocol | None:
+        """Create or return the LAN client, discovering the host if needed."""
+        if self._local and self._local.host:
+            return self._local
+        host = self._host
+        if not host and self._mac and not self._lan_discovery_attempted:
+            # Broadcast once per connect cycle. Retrying on every command
+            # would flood the LAN when the robot is simply powered off.
+            self._lan_discovery_attempted = True
+            host = find_host_for_mac(self._mac, self._token)
+            if host:
+                self._host = host
+                _LOGGER.info("Discovered mower on LAN at %s", host)
+        if not host:
+            return None
+        self._local = LocalMowerProtocol(host, self._token, self._device_id)
+        return self._local
+
+    @property
+    def lan_credentials(self) -> tuple[str | None, str | None]:
+        """Return the LAN IP and miIO token learned from config or the cloud."""
+        return self._host, self._token
+
+    def _apply_lan_from_device_info(self, device_info: dict[str, Any]) -> None:
+        """Remember the robot's LAN address and token from the cloud device list."""
+        host = (
+            device_info.get("localip")
+            or device_info.get("localIp")
+            or device_info.get("ip")
+        )
+        token = device_info.get("token")
+        if isinstance(host, str) and host.strip() and not self._host:
+            self._host = host.strip()
+            _LOGGER.info("Learned mower LAN address %s from the cloud", self._host)
+        if isinstance(token, str) and token.strip():
+            if not self._token or _normalize_token(self._token) == "0" * 32:
+                self._token = token.strip()
+        if self._host and (
+            self._local is None
+            or self._local.host != self._host
+            or (
+                self._token
+                and self._local.token != _normalize_token(self._token)
+            )
+        ):
+            self._local = LocalMowerProtocol(self._host, self._token, self._device_id)
+
+    def _send_command(self, method: str, parameters: Any, retry_count: int = 2) -> Any:
+        """Send a command via LAN and/or cloud, preferring whichever is working."""
+        local = self._ensure_local()
+        cloud_first = self._raw_cloud_device.connected and not self._prefer_local
+
+        def _local_send() -> Any:
+            if local is None:
+                raise ConnectionError("No local mower host configured")
+            return local.send(method, parameters, retry_count=retry_count)
+
+        def _cloud_send() -> Any:
+            return self._raw_cloud_device.send(method, parameters, retry_count=retry_count)
+
+        if cloud_first:
+            try:
+                return _cloud_send()
+            except (TimeoutError, ConnectionError, OSError) as ex:
+                _LOGGER.warning("Cloud command %s failed (%s); trying LAN", method, ex)
+                if local is not None:
+                    return _local_send()
+                raise
+
+        if local is not None:
+            try:
+                return _local_send()
+            except (TimeoutError, ConnectionError, OSError) as ex:
+                if self._raw_cloud_device.connected:
+                    _LOGGER.warning("LAN command %s failed (%s); trying cloud", method, ex)
+                    return _cloud_send()
+                raise
+        return _cloud_send()
+
     def _set_online(self, online: bool) -> None:
         """Update the cached online flag and notify listeners on change."""
         if online:
@@ -697,12 +874,19 @@ class DreameMowerDevice:
         missed heartbeat does not flap entities to unavailable.
         """
         loop = asyncio.get_event_loop()
+        if self.local_connected or (self._host and not self._raw_cloud_device.connected):
+            local_ok = await loop.run_in_executor(None, self._connect_local_sync)
+            if local_ok:
+                await loop.run_in_executor(None, self._poll_local_properties_sync)
+                self._set_online(True)
+                return True
+
         online: bool | None = None
         for _attempt in range(3):
             try:
                 props = await loop.run_in_executor(
                     None,
-                    lambda: self._cloud_device.get_properties(
+                    lambda: self._raw_cloud_device.get_properties(
                         [{"siid": PROPERTY_1_1.siid, "piid": PROPERTY_1_1.piid}]
                     ),
                 )
@@ -816,6 +1000,8 @@ class DreameMowerDevice:
             if "model" in device_info:
                 model = device_info["model"]
                 self._device_code_handler.set_model(model)
+
+            self._apply_lan_from_device_info(device_info)
             
             # Update last update timestamp
             self._last_update = datetime.now()
@@ -1238,26 +1424,72 @@ class DreameMowerDevice:
     def _handle_disconnected(self) -> None:
         """Handle cloud device disconnection."""
         _LOGGER.warning("Cloud device disconnected for %s", self._device_id)
+        if self.local_connected:
+            _LOGGER.info("Keeping device %s available over LAN after cloud drop", self._device_id)
+            return
         self._notify_property_change("connected", False)
 
-    async def connect(self) -> bool:
-        """Connect to the device."""
+    def _connect_local_sync(self) -> bool:
+        """Discover and handshake with the mower on the LAN."""
+        local = self._ensure_local()
+        if local is None:
+            return False
+        return local.connect()
+
+    def _poll_local_properties_sync(self) -> None:
+        """Read the core status properties over LAN and feed the MQTT handlers."""
+        local = self._ensure_local()
+        if local is None:
+            return
+        params = [
+            {"siid": PROPERTY_1_1.siid, "piid": PROPERTY_1_1.piid},
+            {"siid": STATUS_PROPERTY.siid, "piid": STATUS_PROPERTY.piid},
+            {"siid": BATTERY_PROPERTY.siid, "piid": BATTERY_PROPERTY.piid},
+            {"siid": CHARGING_STATUS_PROPERTY.siid, "piid": CHARGING_STATUS_PROPERTY.piid},
+            {"siid": BLUETOOTH_PROPERTY.siid, "piid": BLUETOOTH_PROPERTY.piid},
+        ]
         try:
-            # Connect to cloud device with required callbacks (run in executor to avoid blocking)
+            props = local.get_properties(params)
+        except (TimeoutError, ConnectionError, OSError) as ex:
+            _LOGGER.debug("Local property poll failed: %s", ex)
+            return
+        if not isinstance(props, list):
+            return
+        for item in props:
+            if not isinstance(item, dict) or item.get("code", 0) != 0:
+                continue
+            if "siid" not in item or "piid" not in item or "value" not in item:
+                continue
+            self._handle_message({
+                "id": 1,
+                "method": "properties_changed",
+                "params": [{
+                    "siid": item.get("siid"),
+                    "piid": item.get("piid"),
+                    "value": item.get("value"),
+                }],
+            })
+
+    async def connect(self) -> bool:
+        """Connect to the cloud, the LAN, or both."""
+        try:
             loop = asyncio.get_event_loop()
-            connected = await loop.run_in_executor(
-                None,
-                lambda: self._cloud_device.connect(
-                    message_callback=self._handle_message,
-                    connected_callback=self._handle_connected,
-                    disconnected_callback=self._handle_disconnected
+            self._lan_discovery_attempted = False
+            cloud_connected = False
+            try:
+                cloud_connected = await loop.run_in_executor(
+                    None,
+                    lambda: self._raw_cloud_device.connect(
+                        message_callback=self._handle_message,
+                        connected_callback=self._handle_connected,
+                        disconnected_callback=self._handle_disconnected
+                    )
                 )
-            )
-            
-            if connected:
+            except Exception as ex:
+                _LOGGER.warning("Cloud connection failed for %s: %s", self._device_id, ex)
+
+            if cloud_connected:
                 self._last_update = datetime.now()
-                
-                # Fetch initial device information (battery, status, firmware) after successful connection
                 try:
                     await self.fetch_device_info()
                 except RuntimeError as ex:
@@ -1265,10 +1497,19 @@ class DreameMowerDevice:
                         _LOGGER.warning("Skipping initial device info fetch - no event loop available")
                     else:
                         raise
-            else:
-                _LOGGER.error("Failed to connect to device %s", self._device_id)
-                
-            return connected
+
+            local_connected = await loop.run_in_executor(None, self._connect_local_sync)
+            if local_connected:
+                self._set_online(True)
+                try:
+                    await loop.run_in_executor(None, self._poll_local_properties_sync)
+                except Exception as ex:
+                    _LOGGER.debug("Initial local property poll failed: %s", ex)
+
+            if not cloud_connected and not local_connected:
+                _LOGGER.error("Failed to connect to device %s over cloud or LAN", self._device_id)
+
+            return cloud_connected or local_connected
         except Exception as ex:
             _LOGGER.error("Error connecting to device %s: %s", self._device_id, ex)
             return False
@@ -1276,8 +1517,9 @@ class DreameMowerDevice:
     async def disconnect(self) -> None:
         """Disconnect from the device."""
         try:
-            # Run disconnect in executor to avoid blocking
-            await asyncio.get_event_loop().run_in_executor(None, self._cloud_device.disconnect)
+            await asyncio.get_event_loop().run_in_executor(None, self._raw_cloud_device.disconnect)
+            if self._local:
+                self._local.disconnect()
             self._notify_property_change("connected", False)
         except Exception as ex:
             _LOGGER.error("Error disconnecting from device %s: %s", self._device_id, ex)

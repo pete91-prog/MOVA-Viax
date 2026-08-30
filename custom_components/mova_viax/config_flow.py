@@ -19,7 +19,17 @@ from homeassistant.helpers.device_registry import format_mac
 from homeassistant.core import callback
 
 from .dreame.cloud.cloud_base import DreameMowerCloudBase
-from .const import CONF_NOTIFY, CONF_MAP_ROTATION, CONF_MAP_SHOW_TITLE, CONF_MAP_SHOW_LEGEND, CONF_MAP_PADDING, DOMAIN
+from .const import (
+    CONF_NOTIFY,
+    CONF_MAP_ROTATION,
+    CONF_MAP_SHOW_TITLE,
+    CONF_MAP_SHOW_LEGEND,
+    CONF_MAP_PADDING,
+    CONF_HOST,
+    CONF_TOKEN,
+    CONF_PREFER_LOCAL,
+    DOMAIN,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -105,6 +115,8 @@ class DreameMowerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self.model: str | None = None
         self.serial_number: str | None = None
         self.name: str | None = None
+        self.host: str | None = None
+        self.token: str | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -352,6 +364,8 @@ class DreameMowerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     CONF_SERIAL: self.serial_number,
                     CONF_ACCOUNT_TYPE: self.account_type,
                     CONF_DEVICE_TYPE: _device_type_for_model(self.model),
+                    CONF_HOST: self.host,
+                    CONF_TOKEN: self.token,
                 },
                 options={
                     CONF_NOTIFY: user_input[CONF_NOTIFY],
@@ -375,6 +389,13 @@ class DreameMowerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self.mac = device_info.get("mac")  # MAC is directly in device_info, not nested
         self.model = device_info.get("model")
         self.serial_number = device_info.get("sn", "")  # Serial number never changes
+        self.host = (
+            device_info.get("localip")
+            or device_info.get("localIp")
+            or device_info.get("ip")
+        )
+        token = device_info.get("token")
+        self.token = token if isinstance(token, str) and token.strip() else None
         
         # Extract device name
         self.name = (
@@ -400,6 +421,15 @@ class DreameMowerOptionsFlow(OptionsFlow):
         current_show_title = self.config_entry.options.get(CONF_MAP_SHOW_TITLE, True)
         current_show_legend = self.config_entry.options.get(CONF_MAP_SHOW_LEGEND, True)
         current_padding = self.config_entry.options.get(CONF_MAP_PADDING, 50)
+        current_host = self.config_entry.options.get(
+            CONF_HOST, self.config_entry.data.get(CONF_HOST, "")
+        ) or ""
+        current_token = self.config_entry.options.get(
+            CONF_TOKEN, self.config_entry.data.get(CONF_TOKEN, "")
+        ) or ""
+        current_prefer_local = self.config_entry.options.get(
+            CONF_PREFER_LOCAL, self.config_entry.data.get(CONF_PREFER_LOCAL, False)
+        )
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema({
@@ -408,5 +438,8 @@ class DreameMowerOptionsFlow(OptionsFlow):
                 vol.Required(CONF_MAP_SHOW_TITLE, default=current_show_title): bool,
                 vol.Required(CONF_MAP_SHOW_LEGEND, default=current_show_legend): bool,
                 vol.Required(CONF_MAP_PADDING, default=current_padding): vol.All(int, vol.Range(min=0, max=200)),
+                vol.Optional(CONF_HOST, default=current_host): str,
+                vol.Optional(CONF_TOKEN, default=current_token): str,
+                vol.Required(CONF_PREFER_LOCAL, default=current_prefer_local): bool,
             }),
         )

@@ -54,14 +54,17 @@
   "options": {
     "step": {
       "init": {
-        "title": "Notification Settings",
-        "description": "Configure which notification types you want to receive from your MOVA Viax.",
+        "title": "MOVA Viax options",
+        "description": "Notifications, map display, and optional LAN control so the mower still works when the internet is down.",
         "data": {
           "notify": "Notification Types",
           "map_rotation": "Map Rotation",
           "map_show_title": "Show Map Title",
           "map_show_legend": "Show Map Legend",
-          "map_padding": "Map Padding (pixels)"
+          "map_padding": "Map Padding (pixels)",
+          "host": "Mower IP address (LAN, optional)",
+          "token": "miIO token (32 hex chars, optional)",
+          "prefer_local": "Prefer local LAN control (works without internet)"
         }
       }
     }

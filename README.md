@@ -74,6 +74,26 @@ Treat unlisted firmware or region-gated features as experimental.
 Do not use Apple / Google sign-in accounts. Create an email-and-password
 MOVAhome login first.
 
+## Works without internet (LAN)
+
+Cloud MQTT is the default path. If you cut the internet, Home Assistant can
+still start, pause, and dock the mower **on the same Wi-Fi** using the local
+miIO port.
+
+The integration stores the robot's LAN IP and token the next time it talks
+to the cloud, so an existing setup keeps working after a later outage. You
+can also set them by hand:
+
+1. Open **Settings → Devices & services → MOVA Viax → Configure**.
+2. Set **Mower IP address** to the robot's LAN IP.
+3. Paste the 32-character **miIO token** if you have one. Leave it blank to
+   try the default token.
+4. Turn on **Prefer local LAN control** if you want commands to skip the
+   cloud whenever the robot answers on the LAN.
+
+Maps and live tracking still need the cloud. The physical control panel on
+the mower always works offline.
+
 ## Entities
 
 | Entity | What it shows |
