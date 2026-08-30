@@ -15,7 +15,7 @@ from enum import Enum
 import json
 import logging
 import os
-from typing import Any, Callable
+from typing import Any, Callable, cast
 from datetime import datetime
 
 from .cloud.cloud_device import DreameMowerCloudDevice
@@ -931,7 +931,7 @@ class DreameMowerDevice:
     @property
     def cloud_device(self) -> DreameMowerCloudDevice:
         """Return the cloud device instance."""
-        return self._cloud_device
+        return cast(DreameMowerCloudDevice, self._cloud_device)
 
     def register_property_callback(self, callback: Callable[[str, Any], None]) -> None:
         """Register callback for property changes."""

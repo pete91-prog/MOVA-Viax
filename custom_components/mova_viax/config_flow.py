@@ -78,6 +78,22 @@ def _device_type_for_model(model: str) -> str:
         return DEVICE_TYPE_SWBOT
     return DEVICE_TYPE_MOWER
 
+
+def _entry_data(entry: Any) -> dict[str, Any]:
+    data = getattr(entry, "data", None)
+    return data if isinstance(data, dict) else {}
+
+
+def _entry_str(entry: Any, key: str) -> str:
+    """Read a string option, falling back to config-entry data."""
+    options = getattr(entry, "options", None)
+    if isinstance(options, dict):
+        value = options.get(key)
+        if isinstance(value, str) and value:
+            return value
+    value = _entry_data(entry).get(key)
+    return value if isinstance(value, str) else ""
+
 # Notification options - focused on error, warning and info notifications
 NOTIFICATION_INFORMATION = "information"
 NOTIFICATION_WARNING = "warning"
@@ -421,14 +437,13 @@ class DreameMowerOptionsFlow(OptionsFlow):
         current_show_title = self.config_entry.options.get(CONF_MAP_SHOW_TITLE, True)
         current_show_legend = self.config_entry.options.get(CONF_MAP_SHOW_LEGEND, True)
         current_padding = self.config_entry.options.get(CONF_MAP_PADDING, 50)
-        current_host = self.config_entry.options.get(
-            CONF_HOST, self.config_entry.data.get(CONF_HOST, "")
-        ) or ""
-        current_token = self.config_entry.options.get(
-            CONF_TOKEN, self.config_entry.data.get(CONF_TOKEN, "")
-        ) or ""
-        current_prefer_local = self.config_entry.options.get(
-            CONF_PREFER_LOCAL, self.config_entry.data.get(CONF_PREFER_LOCAL, False)
+        current_host = _entry_str(self.config_entry, CONF_HOST)
+        current_token = _entry_str(self.config_entry, CONF_TOKEN)
+        current_prefer_local = bool(
+            self.config_entry.options.get(CONF_PREFER_LOCAL)
+            if isinstance(self.config_entry.options, dict)
+            and CONF_PREFER_LOCAL in self.config_entry.options
+            else _entry_data(self.config_entry).get(CONF_PREFER_LOCAL, False)
         )
         return self.async_show_form(
             step_id="init",
